@@ -23,9 +23,6 @@ workflows:
   saat_update:
     jobs:
       - run-bot
-  saat_update:
-    jobs:
-      - run-bot
 
   setiap_30_menit:
     triggers:
