@@ -9,11 +9,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from urllib.parse import urlparse
 
 def print_log(text):
-    print(text, flush=True)
+    timestamp = time.strftime("%H:%M:%S")
+    print(f"[{timestamp}] {text}", flush=True)
     sys.stdout.flush()
 
 def run_bot():
-    # Daftar link video manual bawaan skrip kamu
+    # Daftar 119 link video manual bawaan kamu
     video_links = [
         "https://www.febspot.com/video/3218504", "https://www.febspot.com/video/3218505",
         "https://www.febspot.com/video/3218527", "https://www.febspot.com/video/3218528",
@@ -92,42 +93,55 @@ def run_bot():
     try:
         driver.get("https://api.ipify.org")
         ip_addr = driver.find_element(By.TAG_NAME, "body").text
-        print_log(f">>> IP BROWSER AKTIF: {ip_addr.strip()}")
-        print_log("-" * 40)
+        print_log(f"🟢 IP BROWSER AKTIF: {ip_addr.strip()}")
+        print_log("-" * 45)
     except Exception:
         print_log("⚠️ Gagal cek IP, lanjut mengeksekusi target...")
 
-    # 2. EXTRACT VIDEO BARU DARI PROFIL (AUTO-SCROLL TANPA BATAS)
+    # 2. LOAD MORE DARI PROFIL (Diadopsi dari Skrip Pintarmu)
     profile_url = "https://www.febspot.com/heru01221996"
-    print_log(f">>> Mengecek profil untuk mencari seluruh link tambahan: {profile_url}")
+    print_log(f"🔍 Mencari seluruh video di halaman profil: {profile_url}")
     driver.get(profile_url)
-    time.sleep(5)
+    time.sleep(8)
 
-    scroll_count = 0
-    while True:
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(2.5)
-        try:
-            load_more = driver.find_element(By.XPATH, "//*[contains(text(), 'Load more')]")
-            if load_more.is_displayed():
-                load_more.click()
-                scroll_count += 1
-                print_log(f"🔄 Berhasil klik 'Load more' ke-{scroll_count}...")
-                time.sleep(3)
-            else:
-                break
-        except Exception:
-            print_log("✨ Semua video di halaman profil telah berhasil dimuat penuh.")
-            break
-
-    elements = driver.find_elements(By.XPATH, "//a[contains(@href, '/video/')]")
-    scraped_links = [el.get_attribute("href") for el in elements if el.get_attribute("href")]
+    last_count = 0
     
-    video_links = list(set(video_links + scraped_links))
-    print_log(f">>> TOTAL KESELURUHAN: {len(video_links)} video siap diproses.")
-    print_log("-" * 40)
+    # Maksimal 25 kali percobaan scroll untuk pengamanan ekstra
+    for i in range(25): 
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(4)
+        
+        # Hitung jumlah link video unik yang saat ini ter-load di layar
+        elements = driver.find_elements(By.XPATH, "//a[contains(@href, '/video/')]")
+        current_count = len(set([el.get_attribute("href") for el in elements if el.get_attribute("href")]))
+        
+        print_log(f"🔄 Scan ke-{i+1}: Ditemukan {current_count} link sementara di halaman...")
+        
+        # JIKA JUMLAH VIDEO SUDAH TIDAK BERTAMBAH, BREAK (Solusi anti-macet)
+        if current_count == last_count: 
+            print_log("✨ Jumlah video tidak bertambah lagi. Semua video profil berhasil dimuat penuh!")
+            break
+            
+        last_count = current_count
 
-    # 3. PERULANGAN KLIK IKLAN INSTAN
+        # Mencoba klik tombol 'Load more' jika muncul di layar
+        try:
+            load_more_btn = driver.find_element(By.XPATH, "//*[contains(text(), 'Load more')]")
+            driver.execute_script("arguments[0].click();", load_more_btn)
+            time.sleep(4)
+        except:
+            pass
+
+    # Mengambil semua link video hasil scraping profil
+    scraped_elements = driver.find_elements(By.XPATH, "//a[contains(@href, '/video/')]")
+    scraped_links = [el.get_attribute("href") for el in scraped_elements if el.get_attribute("href")]
+    
+    # Gabungkan secara unik (menghapus duplikat)
+    video_links = list(set(video_links + scraped_links))
+    print_log(f"📚 TOTAL KESELURUHAN SELESAI DIKUMPULKAN: {len(video_links)} video.")
+    print_log("-" * 45)
+
+    # 3. PERULANGAN KLIK IKLAN INSTAN (Kembali ke Perilaku Skrip Awal)
     random.shuffle(video_links)
     
     for index, link in enumerate(video_links):
@@ -144,7 +158,7 @@ def run_bot():
             main_window = driver.current_window_handle
             print_log("🔘 Tombol 'Accept & Watch Video' ditemukan! Melakukan klik...")
             accept_btn.click()
-            time.sleep(3) # Beri waktu jendela tab baru untuk memicu terbuka
+            time.sleep(3) # Beri waktu jendela tab baru terbuka
 
             # Cari jika ada jendela/tab baru yang terbuka
             all_windows = driver.window_handles
