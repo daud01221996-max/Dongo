@@ -3,19 +3,17 @@ import random
 import sys
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 
 def print_log(text):
     print(text, flush=True)
     sys.stdout.flush()
 
 def run_bot():
-    # Daftar link video manual (Update: 119 link)
+    # Daftar link video manual (119 link)
     video_links = [
         "https://www.febspot.com/video/3218504", "https://www.febspot.com/video/3218505",
         "https://www.febspot.com/video/3218527", "https://www.febspot.com/video/3218528",
@@ -84,6 +82,7 @@ def run_bot():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--mute-audio")
+    # ❌ BAGIAN PROXY TOR SUDAH DIHAPUS DARI SINI
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
@@ -91,21 +90,23 @@ def run_bot():
     chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
 
     print_log(">>> Menyiapkan Browser...")
-    service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    driver = webdriver.Chrome(options=chrome_options)
 
     driver.execute_cdp_cmd("Page.addScriptToEvaluateOnNewDocument", {
         "source": "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
     })
 
     try:
-        # CEK IP
-        driver.get("https://api.ipify.org")
-        ip_addr = driver.find_element(By.TAG_NAME, "body").text
-        print_log(f">>> IP BROWSER: {ip_addr}")
-        print_log("-" * 40)
+        # CEK IP REGULER
+        try:
+            driver.get("https://api.ipify.org")
+            ip_addr = driver.find_element(By.TAG_NAME, "body").text
+            print_log(f">>> IP BROWSER: {ip_addr}")
+            print_log("-" * 40)
+        except Exception:
+            pass
 
-        # 2. LOAD MORE DARI PROFIL (Untuk menangkap link baru otomatis)
+        # 2. LOAD MORE DATA PROFIL UNTUK MENCARI LINK TAMBAHAN
         profile_url = "https://www.febspot.com/heru01221996"
         print_log(f">>> Mengecek profil untuk link tambahan: {profile_url}")
         driver.get(profile_url)
@@ -113,7 +114,7 @@ def run_bot():
 
         last_count = 0
         same_count_retry = 0
-        for i in range(25):
+        for i in range(15):
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
             time.sleep(3)
             
@@ -128,61 +129,92 @@ def run_bot():
             last_count = current_count
 
             try:
-                load_more_btn = WebDriverWait(driver, 8).until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Load more')]")))
+                load_more_btn = WebDriverWait(driver, 6).until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Load more')]")))
                 driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", load_more_btn)
                 time.sleep(1)
                 driver.execute_script("arguments[0].click();", load_more_btn)
-                time.sleep(6)
+                time.sleep(5)
             except:
                 break
 
-        # Gabungkan semua link
-        scraped_links = [el.get_attribute("href") for el in driver.find_elements(By.XPATH, "//a[contains(@href, '/video/')]")]
+        scraped_links = [el.get_attribute("href") for el in driver.find_elements(By.XPATH, "//a[contains(@href, '/video/')]") if el.get_attribute("href")]
         video_links = list(set(video_links + scraped_links))
         
         print_log(f">>> TOTAL AKHIR: {len(video_links)} video siap diputar.")
         print_log("-" * 40)
 
-        # 3. MULAI NONTON
+        # 3. PROSES PEMUTARAN VIDEO UTAMA
         random.shuffle(video_links)
+        main_window = driver.current_window_handle
+
         for index, link in enumerate(video_links):
             print_log(f"\n[{index+1}/{len(video_links)}] Membuka: {link}")
             driver.get(link)
             time.sleep(5) 
             
             try:
-                wait = WebDriverWait(driver, 25)
+                wait = WebDriverWait(driver, 15)
+                
+                # 🔥 LOGIKA MENANGKAP TOMBOL SPONSOR "Accept & Watch Video"
+                try:
+                    accept_btn = driver.find_elements(By.XPATH, "//button[contains(text(), 'Accept & Watch Video')]")
+                    if not accept_btn:
+                        accept_btn = driver.find_elements(By.XPATH, "//div[contains(@class, 'watched')]//button")
+                    
+                    if accept_btn and accept_btn[0].is_displayed():
+                        print_log("🔘 Menemukan gerbang iklan. Mengeklik 'Accept & Watch Video'...")
+                        driver.execute_script("arguments[0].click();", accept_btn[0])
+                        time.sleep(6)
+                        
+                        # JIKA IKLAN MEMBUKA TAB BARU (POP-UP), TUTUP TAB TERSEBUT
+                        if len(driver.window_handles) > 1:
+                            print_log("🗂️ Mendeteksi tab iklan pop-up terbuka. Menutup tab iklan...")
+                            for handle in driver.window_handles:
+                                if handle != main_window:
+                                    driver.switch_to.window(handle)
+                                    driver.close()
+                            driver.switch_to.window(main_window)
+                            time.sleep(2)
+                except Exception as ad_err:
+                    print_log(f"ℹ️ Info gerbang iklan: {ad_err}")
+
+                # JALANKAN PROSES PLAY VIDEO UTAMA
                 video_element = wait.until(EC.presence_of_element_located((By.TAG_NAME, "video")))
                 
                 actions = ActionChains(driver)
                 actions.move_to_element(video_element).click().perform()
-                print_log("Klik Play.")
+                print_log("▶️ Klik Play Video.")
 
                 duration = driver.execute_script("return arguments[0].duration;", video_element)
                 if duration and duration > 0:
-                    print_log(f"Durasi: {int(duration)} detik.")
+                    print_log(f"⏳ Durasi: {int(duration)} detik.")
                     start_watch = time.time()
                     while True:
                         current = driver.execute_script("return arguments[0].currentTime;", video_element)
                         ended = driver.execute_script("return arguments[0].ended;", video_element)
                         if ended or current >= (duration - 1):
-                            print_log("Selesai.")
+                            print_log("✅ Selesai Menonton.")
                             break
                         if (time.time() - start_watch) > (duration + 20):
+                            print_log("⏱️ Batas waktu tayang tercapai.")
                             break
                         time.sleep(5)
                 else:
                     time.sleep(25)
-            except Exception:
-                print_log("Gagal memuat video.")
+                    print_log("✅ Selesai Menonton (Waktu Standar).")
+                    
+            except Exception as e:
+                print_log("❌ Gagal memuat/memutar elemen video.")
             
             time.sleep(random.randint(4, 7))
 
     except Exception as e:
-        print_log(f"ERROR: {e}")
+        print_log(f"💥 GLOBAL ERROR: {e}")
     finally:
-        driver.quit()
+        try:
+            driver.quit()
+        except:
+            pass
 
 if __name__ == "__main__":
     run_bot()
-    
