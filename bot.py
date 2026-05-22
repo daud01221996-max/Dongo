@@ -82,12 +82,11 @@ def run_bot():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--mute-audio")
-    # ❌ BAGIAN PROXY TOR SUDAH DIHAPUS DARI SINI
     chrome_options.add_argument("--disable-blink-features=AutomationControlled")
     chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
     chrome_options.add_experimental_option('useAutomationExtension', False)
     chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36")
+    chrome_options.add_argument("--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, Gecko) Chrome/122.0.0.0 Safari/537.36")
 
     print_log(">>> Menyiapkan Browser...")
     driver = webdriver.Chrome(options=chrome_options)
@@ -97,7 +96,7 @@ def run_bot():
     })
 
     try:
-        # CEK IP REGULER
+        # 1. CEK IP
         try:
             driver.get("https://api.ipify.org")
             ip_addr = driver.find_element(By.TAG_NAME, "body").text
@@ -145,6 +144,8 @@ def run_bot():
 
         # 3. PROSES PEMUTARAN VIDEO UTAMA
         random.shuffle(video_links)
+        
+        # Simpan ID Tab Utama tempat bot pertama kali berjalan
         main_window = driver.current_window_handle
 
         for index, link in enumerate(video_links):
@@ -155,7 +156,7 @@ def run_bot():
             try:
                 wait = WebDriverWait(driver, 15)
                 
-                # 🔥 LOGIKA MENANGKAP TOMBOL SPONSOR "Accept & Watch Video"
+                # 🔘 LOGIKA MENANGKAP TOMBOL SPONSOR "Accept & Watch Video"
                 try:
                     accept_btn = driver.find_elements(By.XPATH, "//button[contains(text(), 'Accept & Watch Video')]")
                     if not accept_btn:
@@ -164,26 +165,34 @@ def run_bot():
                     if accept_btn and accept_btn[0].is_displayed():
                         print_log("🔘 Menemukan gerbang iklan. Mengeklik 'Accept & Watch Video'...")
                         driver.execute_script("arguments[0].click();", accept_btn[0])
-                        time.sleep(6)
+                        time.sleep(5) # Jeda waktu agar tab iklan pop-up terbuka sempurna
                         
-                        # JIKA IKLAN MEMBUKA TAB BARU (POP-UP), TUTUP TAB TERSEBUT
+                        # 🔥 PENANGANAN TAB BARU: Jika tab bertambah, tutup semua tab selain tab utama
                         if len(driver.window_handles) > 1:
-                            print_log("🗂️ Mendeteksi tab iklan pop-up terbuka. Menutup tab iklan...")
+                            print_log("🗂️ Pop-up terdeteksi. Menutup tab iklan baru...")
                             for handle in driver.window_handles:
                                 if handle != main_window:
                                     driver.switch_to.window(handle)
-                                    driver.close()
+                                    driver.close() # Tutup tab iklan
+                            
+                            # Kembalikan kontrol browser ke tab video utama
                             driver.switch_to.window(main_window)
                             time.sleep(2)
                 except Exception as ad_err:
                     print_log(f"ℹ️ Info gerbang iklan: {ad_err}")
 
-                # JALANKAN PROSES PLAY VIDEO UTAMA
+                # JALANKAN PROSES MONITORING ELEMEN VIDEO UTAMA
                 video_element = wait.until(EC.presence_of_element_located((By.TAG_NAME, "video")))
                 
-                actions = ActionChains(driver)
-                actions.move_to_element(video_element).click().perform()
-                print_log("▶️ Klik Play Video.")
+                # Karena user menginfokan video langsung terplay otomatis setelah klik accept,
+                # kita hanya melakukan klik play manual jika video terdeteksi dalam keadaan pause/berhenti.
+                is_paused = driver.execute_script("return arguments[0].paused;", video_element)
+                if is_paused:
+                    actions = ActionChains(driver)
+                    actions.move_to_element(video_element).click().perform()
+                    print_log("▶️ Klik Play Manual (karena video ter-pause).")
+                else:
+                    print_log("▶️ Video sudah otomatis berputar.")
 
                 duration = driver.execute_script("return arguments[0].duration;", video_element)
                 if duration and duration > 0:
@@ -192,14 +201,17 @@ def run_bot():
                     while True:
                         current = driver.execute_script("return arguments[0].currentTime;", video_element)
                         ended = driver.execute_script("return arguments[0].ended;", video_element)
+                        
                         if ended or current >= (duration - 1):
                             print_log("✅ Selesai Menonton.")
                             break
+                        # Proteksi waktu tunggu maksimal (durasi + batas toleransi 20 detik)
                         if (time.time() - start_watch) > (duration + 20):
                             print_log("⏱️ Batas waktu tayang tercapai.")
                             break
                         time.sleep(5)
                 else:
+                    # Jika durasi gagal dibaca sistem, tonton default selama 25 detik
                     time.sleep(25)
                     print_log("✅ Selesai Menonton (Waktu Standar).")
                     
