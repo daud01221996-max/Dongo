@@ -140,57 +140,40 @@ def run_bot():
     print_log(f"📚 TOTAL BERHASIL DIKUMPULKAN: {len(video_links)} video.")
     print_log("-" * 45)
 
-    # 3. PERULANGAN KLIK TOMBOL IKLAN
+    # 3. PERULANGAN MEMUTAR VIDEO
     random.shuffle(video_links)
     
     for index, link in enumerate(video_links):
         print_log(f"\n[{index+1}/{len(video_links)}] Membuka Halaman: {link}")
         try:
             driver.get(link)
-            time.sleep(3)
+            time.sleep(4) # Waktu tunggu agar halaman video ter-load
         except Exception:
             continue
         
         try:
-            wait = WebDriverWait(driver, 15)
-            accept_btn = wait.until(EC.element_to_be_clickable(
-                (By.XPATH, "//button[contains(text(), 'Watch Video')] | //button[contains(text(), 'Accept & Watch Video')] | //div[contains(@class, 'watched')]//button")
-            ))
+            # Menggunakan JavaScript untuk langsung mencari elemen video, klik play, dan ambil total durasi
+            video_script = """
+                var video = document.querySelector('video');
+                if (video) {
+                    video.play();
+                    return video.duration;
+                }
+                return null;
+            """
+            duration = driver.execute_script(video_script)
             
-            main_window = driver.current_window_handle
-            driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", accept_btn)
-            time.sleep(1)
-            
-            print_log("🔘 Tombol ditemukan! Melakukan klik tiruan...")
-            try:
-                actions = ActionChains(driver)
-                actions.move_to_element(accept_btn).pause(1.0).click().perform()
-            except Exception:
-                driver.execute_script("arguments[0].click();", accept_btn)
-
-            time.sleep(5)
-            all_windows = driver.window_handles
-
-            if len(all_windows) > 1:
-                for window in all_windows:
-                    if window != main_window:
-                        driver.switch_to.window(window)
-                        break
-                
-                ad_url = driver.current_url
-                domain = urlparse(ad_url).netloc
-                print_log(f"🌐 [WEB IKLAN TERBUKA]: {domain if domain else ad_url}")
-                print_log("⏳ Menunggu di tab iklan selama 12 detik...")
-                time.sleep(12)
-                
-                driver.close()
-                driver.switch_to.window(main_window)
-                print_log("✅ Tab iklan ditutup. Lanjut ke target berikutnya.")
+            if duration and duration > 0:
+                wait_time = int(duration)
+                print_log(f"▶️ Video berhasil diputar. Menunggu selama {wait_time} detik sampai selesai...")
+                time.sleep(wait_time + 2) # Buffer 2 detik untuk memastikan video benar-benar tamat
+                print_log("✅ Video selesai. Lanjut ke target berikutnya.")
             else:
-                print_log("⚠️ Klik berhasil dilakukan, namun tidak ada tab iklan eksternal terbuka.")
+                print_log("⚠️ Gagal mendapatkan durasi video, menunggu default 30 detik...")
+                time.sleep(30)
                 
         except Exception:
-            print_log("❌ Gagal memproses struktur iklan pada halaman ini. Skip...")
+            print_log("❌ Gagal mengeksekusi pemutaran video pada halaman ini. Skip...")
 
         time.sleep(random.randint(3, 5))
 
